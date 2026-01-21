@@ -27,9 +27,14 @@ const App: React.FC = () => {
     setProcessingState({ status: 'processing', message: 'Converting PDF...' });
     setProcessingProgress({ stage: 'converting', message: 'Converting PDF...' });
 
+    // ABORT FLAG - prevents state updates after any error
+    let aborted = false;
+
     try {
       console.log('Starting parallel Gemini + OCR processing...');
       const base64 = await fileToBase64(selectedFile);
+
+      if (aborted) return; // Check after async operation
       setProcessingState({ status: 'processing', message: 'Analyzing document...' });
       setProcessingProgress({ stage: 'extracting', message: 'Extracting data with AI...' });
 
@@ -39,50 +44,68 @@ const App: React.FC = () => {
 
       // Run Gemini extraction and OCR in parallel
       const [extractedData, ocrResults] = await Promise.all([
+        // Gemini extraction
         (async () => {
-          const result = await geminiService.extractBidData(base64, selectedFile.type);
-          geminiComplete = true;
-          // If OCR already done, we're finished
-          if (ocrComplete) {
-            setProcessingProgress({ stage: 'matching', message: 'Matching data to document...', percent: 100 });
-          } else {
-            // OCR still running, update message to indicate AI is done
-            setProcessingProgress(prev => prev ? {
-              ...prev,
-              message: `AI extraction complete. ${prev.message}`
-            } : prev);
+          try {
+            const result = await geminiService.extractBidData(base64, selectedFile.type);
+            if (aborted) return null; // Don't update state if already errored
+            geminiComplete = true;
+            // If OCR already done, we're finished
+            if (ocrComplete) {
+              setProcessingProgress({ stage: 'matching', message: 'Matching data to document...', percent: 100 });
+            } else {
+              // OCR still running, update message to indicate AI is done
+              setProcessingProgress(prev => prev ? {
+                ...prev,
+                message: `AI extraction complete. ${prev.message}`
+              } : prev);
+            }
+            return result;
+          } catch (error) {
+            aborted = true; // Set flag BEFORE re-throwing
+            throw error;
           }
-          return result;
         })(),
+        // OCR processing
         (async () => {
-          const result = await ocrPdfPages(selectedFile, (progress) => {
-            const ocrPercent = Math.round((progress.currentPage / progress.totalPages) * 100);
-            setProcessingState({
-              status: 'processing',
-              message: progress.status
+          try {
+            const result = await ocrPdfPages(selectedFile, (progress) => {
+              if (aborted) return; // CRITICAL: Skip ALL state updates if aborted
+              const ocrPercent = Math.round((progress.currentPage / progress.totalPages) * 100);
+              setProcessingState({
+                status: 'processing',
+                message: progress.status
+              });
+              setProcessingProgress({
+                stage: 'ocr',
+                message: geminiComplete
+                  ? `Performing OCR on page ${progress.currentPage}...`
+                  : `Extracting with AI + OCR page ${progress.currentPage}...`,
+                currentPage: progress.currentPage,
+                totalPages: progress.totalPages,
+                percent: ocrPercent
+              });
             });
-            setProcessingProgress({
-              stage: 'ocr',
-              message: geminiComplete
-                ? `Performing OCR on page ${progress.currentPage}...`
-                : `Extracting with AI + OCR page ${progress.currentPage}...`,
-              currentPage: progress.currentPage,
-              totalPages: progress.totalPages,
-              percent: ocrPercent
-            });
-          });
-          ocrComplete = true;
-          // If Gemini not done yet, show waiting message
-          if (!geminiComplete) {
-            setProcessingProgress({
-              stage: 'extracting',
-              message: 'OCR complete. Waiting for AI analysis...',
-              percent: 100  // OCR is 100%, but still waiting
-            });
+            if (aborted) return []; // Don't update state if already errored
+            ocrComplete = true;
+            // If Gemini not done yet, show waiting message
+            if (!geminiComplete) {
+              setProcessingProgress({
+                stage: 'extracting',
+                message: 'OCR complete. Waiting for AI analysis...',
+                percent: 100  // OCR is 100%, but still waiting
+              });
+            }
+            return result;
+          } catch (error) {
+            aborted = true; // Set flag BEFORE re-throwing
+            throw error;
           }
-          return result;
         })()
       ]);
+
+      // CRITICAL: Check abort before ANY success state updates
+      if (aborted) return;
 
       console.log('Gemini extraction complete');
       console.log(`OCR complete: ${ocrResults.length} pages processed`);
@@ -102,6 +125,7 @@ const App: React.FC = () => {
       }]);
 
     } catch (error: any) {
+      aborted = true; // Ensure flag is set (might already be set by inner catch)
       console.error(error);
       // Convert API errors to user-friendly messages
       let userMessage = 'Failed to extract data. Please try again.';
