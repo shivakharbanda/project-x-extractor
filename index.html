@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vendor Bid Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f3f4f6;
+      }
+      /* Custom scrollbar for cleaner UI */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+      
+      /* Essential React-PDF Styles (Manual include to avoid import errors) */
+      .react-pdf__Page {
+        position: relative;
+        background-color: white;
+      }
+      .react-pdf__Page__textContent {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+        overflow: hidden;
+        color: transparent;
+        line-height: 1;
+        white-space: pre;
+        pointer-events: none;
+      }
+      .react-pdf__Page__textContent span {
+        position: absolute;
+        transform-origin: 0% 0%;
+        pointer-events: all !important;
+        cursor: pointer;
+      }
+      .react-pdf__Page__annotations.annotationLayer {
+        display: none; 
+      }
+      
+      /* Highlighting Animations */
+      @keyframes pulse-highlight {
+        0% { background-color: rgba(99, 102, 241, 0.2); }
+        50% { background-color: rgba(99, 102, 241, 0.5); }
+        100% { background-color: rgba(99, 102, 241, 0.2); }
+      }
+      .animate-pulse-highlight {
+        animation: pulse-highlight 2s infinite;
+      }
+    </style>
+    <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

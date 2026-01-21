@@ -1,0 +1,5 @@
+{
+  "name": "Vendor Bid Extractor",
+  "description": "Extracts pricing data from vendor bid PDFs using Proprietary and provides an interactive, bidirectional visual interface.",
+  "requestFramePermissions": []
+}
