@@ -3,12 +3,16 @@ import { FileUpload } from './components/FileUpload';
 import { PDFViewer } from './components/PDFViewer';
 import { DataPanel } from './components/DataPanel';
 import { ChatInterface } from './components/ChatInterface';
+import ArchitectureDemo from './components/ArchitectureDemo';
 import { geminiService, fileToBase64 } from './services/geminiService';
 import { ocrPdfPages, findContactFieldPosition, findAllFieldPositions } from './services/ocrService';
 import { ExtractedBidData, ChatMessage, ProcessingState, PageOcrData, ProcessingProgress, ContactFieldHighlight } from './types';
 import { v4 as uuidv4 } from 'uuid'; // A simple random ID generator would suffice but using uuid usually implies a lib, I'll use simple Date.now for demo
 
+type AppView = 'extractor' | 'architecture';
+
 const App: React.FC = () => {
+  const [currentView, setCurrentView] = useState<AppView>('extractor');
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<ExtractedBidData | null>(null);
   const [ocrData, setOcrData] = useState<PageOcrData[]>([]);
@@ -265,15 +269,51 @@ const App: React.FC = () => {
     <div className="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden">
         {/* Navigation Bar */}
         <nav className="h-14 bg-white border-b border-slate-200 flex items-center px-6 shrink-0 z-30 justify-between">
-            <div className="flex items-center gap-2">
-                <div className="bg-indigo-600 rounded-lg p-1.5">
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+            <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                    <div className="bg-indigo-600 rounded-lg p-1.5">
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <span className="font-bold text-slate-800 text-lg tracking-tight">BidExtract</span>
                 </div>
-                <span className="font-bold text-slate-800 text-lg tracking-tight">BidExtract</span>
+
+                {/* Navigation Tabs */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                    <button
+                        onClick={() => setCurrentView('extractor')}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                            currentView === 'extractor'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        <span className="flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Extractor
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => setCurrentView('architecture')}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                            currentView === 'architecture'
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-slate-600 hover:text-slate-800'
+                        }`}
+                    >
+                        <span className="flex items-center gap-1.5">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            Architecture
+                        </span>
+                    </button>
+                </div>
             </div>
-            {data && (
+            {currentView === 'extractor' && data && (
                 <button
                     onClick={() => { setFile(null); setData(null); setOcrData([]); setChatMessages([]); }}
                     className="text-sm text-slate-500 hover:text-indigo-600 font-medium px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors"
@@ -285,7 +325,10 @@ const App: React.FC = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 flex overflow-hidden relative">
-            {!data ? (
+            {currentView === 'architecture' ? (
+                // Architecture Demo View
+                <ArchitectureDemo />
+            ) : !data ? (
                 // Upload View
                 <FileUpload
                     onFileSelect={handleFileSelect}
@@ -327,9 +370,9 @@ const App: React.FC = () => {
                             onToggleHighlights={() => setShowHighlights(!showHighlights)}
                         />
                     </div>
-                    
+
                     {/* Chat Overlay */}
-                    <ChatInterface 
+                    <ChatInterface
                         messages={chatMessages}
                         onSendMessage={handleChatMessage}
                         isTyping={isChatTyping}
