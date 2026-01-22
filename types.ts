@@ -3,6 +3,18 @@ export interface VendorInfo {
   quote_id: string;
   quote_date: string;
   terms: string;
+  supplier_address: string;
+  supplier_phone: string;
+  supplier_email: string;
+  supplier_fax: string;
+}
+
+export interface ReceiverInfo {
+  receiver_name: string;
+  receiver_address: string;
+  receiver_phone: string;
+  receiver_email: string;
+  receiver_fax: string;
 }
 
 export interface LineItem {
@@ -25,6 +37,7 @@ export interface Summary {
 
 export interface ExtractedBidData {
   vendor_info: VendorInfo;
+  receiver_info: ReceiverInfo;
   line_items: LineItem[];
   summary: Summary;
 }
@@ -75,6 +88,12 @@ export interface FieldHighlight {
 export interface LineHighlight {
   lineId: number;
   highlights: FieldHighlight[];  // Can span multiple pages
+}
+
+export interface ContactFieldHighlight {
+  fieldName: string;  // e.g. "supplier_phone", "receiver_email"
+  pageIndex: number;
+  boundingBox: BoundingBox;
 }
 
 // OCR Types for Tesseract.js

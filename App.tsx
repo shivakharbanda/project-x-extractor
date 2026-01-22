@@ -1,11 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { PDFViewer } from './components/PDFViewer';
 import { DataPanel } from './components/DataPanel';
 import { ChatInterface } from './components/ChatInterface';
 import { geminiService, fileToBase64 } from './services/geminiService';
-import { ocrPdfPages } from './services/ocrService';
-import { ExtractedBidData, ChatMessage, ProcessingState, PageOcrData, ProcessingProgress } from './types';
+import { ocrPdfPages, findContactFieldPosition, findAllFieldPositions } from './services/ocrService';
+import { ExtractedBidData, ChatMessage, ProcessingState, PageOcrData, ProcessingProgress, ContactFieldHighlight } from './types';
 import { v4 as uuidv4 } from 'uuid'; // A simple random ID generator would suffice but using uuid usually implies a lib, I'll use simple Date.now for demo
 
 const App: React.FC = () => {
@@ -15,10 +15,28 @@ const App: React.FC = () => {
   const [processingState, setProcessingState] = useState<ProcessingState>({ status: 'idle' });
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [highlightedLineId, setHighlightedLineId] = useState<number | null>(null);
+  const [contactFieldHighlight, setContactFieldHighlight] = useState<ContactFieldHighlight | null>(null);
+  const [showHighlights, setShowHighlights] = useState(true);
+  const [allFieldHighlights, setAllFieldHighlights] = useState<Map<string, ContactFieldHighlight>>(new Map());
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatTyping, setIsChatTyping] = useState(false);
+
+  // Compute all field highlights when data and ocrData are loaded
+  useEffect(() => {
+    if (data && ocrData.length > 0) {
+      const highlights = findAllFieldPositions(
+        data.vendor_info,
+        data.receiver_info,
+        ocrData
+      );
+      setAllFieldHighlights(highlights);
+      console.log(`Computed ${highlights.size} field highlights`);
+    } else {
+      setAllFieldHighlights(new Map());
+    }
+  }, [data, ocrData]);
 
   // File Upload Handler
   const handleFileSelect = async (selectedFile: File) => {
@@ -150,13 +168,36 @@ const App: React.FC = () => {
   // Interaction Handlers
   const handleLineClick = useCallback((lineId: number) => {
     setHighlightedLineId(lineId);
-    
+    setContactFieldHighlight(null); // Clear contact highlight when clicking line item
+
     // Also scroll table row into view
     const row = document.getElementById(`table-row-${lineId}`);
     if (row) {
         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, []);
+
+  const handleContactFieldClick = useCallback((fieldName: string) => {
+    if (!data || ocrData.length === 0) return;
+
+    // Get the field value from vendor_info or receiver_info
+    let fieldValue = '';
+    if (fieldName.startsWith('supplier_') || fieldName === 'vendor_name' ||
+        fieldName === 'quote_id' || fieldName === 'quote_date' || fieldName === 'terms') {
+      fieldValue = (data.vendor_info as any)[fieldName] || '';
+    } else if (fieldName.startsWith('receiver_')) {
+      fieldValue = (data.receiver_info as any)[fieldName] || '';
+    }
+
+    if (!fieldValue) return;
+
+    // Find the position in OCR data
+    const highlight = findContactFieldPosition(fieldName, fieldValue, ocrData);
+    if (highlight) {
+      setContactFieldHighlight(highlight);
+      setHighlightedLineId(null); // Clear line highlight when clicking contact field
+    }
+  }, [data, ocrData]);
 
   const handleLineHover = useCallback((lineId: number | null) => {
     // Only highlight if explicitly clicking usually, but for bidirectional feel we can use hover
@@ -268,16 +309,22 @@ const App: React.FC = () => {
                             ocrData={ocrData}
                             highlightedLineId={highlightedLineId}
                             onLineItemClick={handleLineClick}
+                            contactFieldHighlight={contactFieldHighlight}
+                            showHighlights={showHighlights}
+                            allFieldHighlights={allFieldHighlights}
                         />
                     </div>
 
                     {/* Right: Data Table (50%) */}
                     <div className="w-1/2 h-full bg-white relative">
-                        <DataPanel 
-                            data={data} 
+                        <DataPanel
+                            data={data}
                             highlightedLineId={highlightedLineId}
                             onLineHover={handleLineHover}
                             onLineClick={handleLineClick}
+                            onContactFieldClick={handleContactFieldClick}
+                            showHighlights={showHighlights}
+                            onToggleHighlights={() => setShowHighlights(!showHighlights)}
                         />
                     </div>
                     

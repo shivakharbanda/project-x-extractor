@@ -17,7 +17,18 @@ json{
     "vendor_name": "string",
     "quote_id": "string",
     "quote_date": "YYYY-MM-DD",
-    "terms": "string"
+    "terms": "string",
+    "supplier_address": "string",
+    "supplier_phone": "string",
+    "supplier_email": "string",
+    "supplier_fax": "string"
+  },
+  "receiver_info": {
+    "receiver_name": "string",
+    "receiver_address": "string",
+    "receiver_phone": "string",
+    "receiver_email": "string",
+    "receiver_fax": "string"
   },
   "line_items": [
     {
@@ -64,6 +75,19 @@ Extract vendor name from header (e.g., "Industrial Tank Supplier")
 Extract quote ID (e.g., "4444")
 Extract quote date in YYYY-MM-DD format
 Extract payment terms (e.g., "Net 90 Days")
+Extract supplier_address - Full address including street, city, state, zip (e.g., "100 Summer Street, Dallas Texas 77778")
+Extract supplier_phone - Phone number with any format (e.g., "123-123-1234")
+Extract supplier_email - Email address if present
+Extract supplier_fax - Fax number if present (e.g., "123-123-4321")
+
+Receiver Info:
+
+Extract receiver_name - Name of the receiving company/person (e.g., "ABC Corporation", "John Smith")
+Extract receiver_address - Full address of the receiving company/person (e.g., "123 ABC Street, Houston Texas 77777")
+Extract receiver_phone - Phone number of the receiver
+Extract receiver_email - Email address of the receiver
+Extract receiver_fax - Fax number of the receiver if present
+Look for sections labeled "Ship To", "Bill To", "Attention", "Customer", or similar to find receiver info
 
 
 Line Numbers: Assign sequential numbers (1, 2, 3...) if not explicitly stated in document
@@ -166,7 +190,18 @@ json{
     "vendor_name": "Industrial Tank Supplier",
     "quote_id": "4444",
     "quote_date": "2020-10-15",
-    "terms": "Net 90 Days"
+    "terms": "Net 90 Days",
+    "supplier_address": "100 Summer Street, Dallas Texas 77778",
+    "supplier_phone": "123-123-1234",
+    "supplier_email": "",
+    "supplier_fax": "123-123-4321"
+  },
+  "receiver_info": {
+    "receiver_name": "Company",
+    "receiver_address": "123 ABC Street, Houston Texas 77777",
+    "receiver_phone": "123 132 1231",
+    "receiver_email": "",
+    "receiver_fax": ""
   },
   "line_items": [
     {
@@ -262,8 +297,23 @@ const extractionSchema: Schema = {
         quote_id: { type: Type.STRING },
         quote_date: { type: Type.STRING },
         terms: { type: Type.STRING },
+        supplier_address: { type: Type.STRING },
+        supplier_phone: { type: Type.STRING },
+        supplier_email: { type: Type.STRING },
+        supplier_fax: { type: Type.STRING },
       },
-      required: ['vendor_name', 'quote_id', 'quote_date', 'terms'],
+      required: ['vendor_name', 'quote_id', 'quote_date', 'terms', 'supplier_address', 'supplier_phone', 'supplier_email', 'supplier_fax'],
+    },
+    receiver_info: {
+      type: Type.OBJECT,
+      properties: {
+        receiver_name: { type: Type.STRING },
+        receiver_address: { type: Type.STRING },
+        receiver_phone: { type: Type.STRING },
+        receiver_email: { type: Type.STRING },
+        receiver_fax: { type: Type.STRING },
+      },
+      required: ['receiver_name', 'receiver_address', 'receiver_phone', 'receiver_email', 'receiver_fax'],
     },
     line_items: {
       type: Type.ARRAY,
@@ -293,7 +343,7 @@ const extractionSchema: Schema = {
       required: ['total_items', 'grand_total', 'currency'],
     },
   },
-  required: ['vendor_info', 'line_items', 'summary'],
+  required: ['vendor_info', 'receiver_info', 'line_items', 'summary'],
 };
 
 export class GeminiService {

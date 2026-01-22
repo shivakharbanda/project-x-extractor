@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Document, Page } from 'react-pdf';
-import { LineItem, LineHighlight, PageOcrData, FieldHighlight } from '../types';
+import { LineItem, LineHighlight, PageOcrData, FieldHighlight, ContactFieldHighlight } from '../types';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import { OCR_SCALE, findLineItemFields } from '../services/ocrService';
 
@@ -10,6 +10,9 @@ interface PDFViewerProps {
   ocrData: PageOcrData[];
   highlightedLineId: number | null;
   onLineItemClick: (lineId: number) => void;
+  contactFieldHighlight?: ContactFieldHighlight | null;
+  showHighlights: boolean;
+  allFieldHighlights: Map<string, ContactFieldHighlight>;
 }
 
 export const PDFViewer: React.FC<PDFViewerProps> = ({
@@ -17,7 +20,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   extractedData,
   ocrData,
   highlightedLineId,
-  onLineItemClick
+  onLineItemClick,
+  contactFieldHighlight,
+  showHighlights,
+  allFieldHighlights
 }) => {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [scale, setScale] = useState(1.2);
@@ -26,6 +32,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   // Track which page each line is on for scrolling
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const contactHighlightRef = useRef<HTMLDivElement | null>(null);
 
   const onDocumentLoadSuccess = async ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -78,38 +85,118 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [highlightedLineId]);
 
+  // Scroll to contact field highlight when it changes
+  useEffect(() => {
+    if (!contactFieldHighlight) return;
+
+    // Use a small timeout to allow the DOM to update first
+    const timer = setTimeout(() => {
+      if (contactHighlightRef.current) {
+        contactHighlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [contactFieldHighlight]);
+
   // Highlight overlay component for a single page
   const HighlightOverlay: React.FC<{ pageIndex: number }> = ({ pageIndex }) => {
-    // Get all highlights for this page (may be from different line items)
+    // Get all line item highlights for this page (may be from different line items)
     const pageHighlights: Array<{ lineId: number; highlight: FieldHighlight }> = [];
 
-    lineHighlights.forEach((lineH, lineId) => {
-      lineH.highlights
-        .filter(h => h.pageIndex === pageIndex)
-        .forEach(h => pageHighlights.push({ lineId, highlight: h }));
-    });
+    if (showHighlights) {
+      lineHighlights.forEach((lineH, lineId) => {
+        lineH.highlights
+          .filter(h => h.pageIndex === pageIndex)
+          .forEach(h => pageHighlights.push({ lineId, highlight: h }));
+      });
+    }
 
-    if (pageHighlights.length === 0) return null;
+    // Get all contact/header field highlights for this page
+    const pageFieldHighlights: ContactFieldHighlight[] = [];
+    if (showHighlights) {
+      allFieldHighlights.forEach((highlight) => {
+        if (highlight.pageIndex === pageIndex) {
+          pageFieldHighlights.push(highlight);
+        }
+      });
+    }
+
+    // Check if there's an active contact field highlight for this page (from clicking)
+    const hasActiveContactHighlight = contactFieldHighlight && contactFieldHighlight.pageIndex === pageIndex;
+
+    if (pageHighlights.length === 0 && pageFieldHighlights.length === 0 && !hasActiveContactHighlight) return null;
 
     return (
       <div className="absolute inset-0 pointer-events-none">
+        {/* Always-visible contact/header field highlights (when toggle is on) */}
+        {pageFieldHighlights.map((highlight, idx) => {
+          const isActive = contactFieldHighlight && contactFieldHighlight.fieldName === highlight.fieldName;
+          return (
+            <div
+              key={`field-${highlight.fieldName}-${idx}`}
+              ref={isActive ? contactHighlightRef : undefined}
+              className={`absolute transition-all duration-300 pointer-events-none ${
+                isActive
+                  ? 'bg-purple-300/70 border-2 border-purple-500 shadow-lg ring-2 ring-purple-400 ring-offset-1'
+                  : 'bg-purple-200/40 border border-purple-300'
+              }`}
+              style={{
+                left: highlight.boundingBox.x * scale,
+                top: highlight.boundingBox.y * scale,
+                width: highlight.boundingBox.width * scale,
+                height: highlight.boundingBox.height * scale,
+                borderRadius: 4
+              }}
+            />
+          );
+        })}
+
+        {/* Active contact field highlight (when clicking but toggle might be off) */}
+        {hasActiveContactHighlight && contactFieldHighlight && !showHighlights && (
+          <div
+            ref={contactHighlightRef}
+            className="absolute bg-purple-300/70 border-2 border-purple-500 shadow-lg ring-2 ring-purple-400 ring-offset-1 pointer-events-none transition-all duration-300"
+            style={{
+              left: contactFieldHighlight.boundingBox.x * scale,
+              top: contactFieldHighlight.boundingBox.y * scale,
+              width: contactFieldHighlight.boundingBox.width * scale,
+              height: contactFieldHighlight.boundingBox.height * scale,
+              borderRadius: 4
+            }}
+          />
+        )}
+
+        {/* Line item highlights */}
         {pageHighlights.map(({ lineId, highlight }, idx) => {
           const isActive = highlightedLineId === lineId;
           const { x, y, width, height } = highlight.boundingBox;
 
-          // Color coding by field type
+          // Color coding by field type - always visible, enhanced when active
+          const getBaseColor = () => {
+            switch (highlight.fieldType) {
+              case 'tag':
+                return 'bg-yellow-200/50 border border-yellow-400';
+              case 'unit_price':
+                return 'bg-green-200/50 border border-green-400';
+              case 'line_total':
+                return 'bg-blue-200/50 border border-blue-400';
+            }
+          };
+
           const getHighlightStyles = () => {
+            const baseStyle = getBaseColor();
             if (isActive) {
               switch (highlight.fieldType) {
                 case 'tag':
-                  return 'bg-yellow-300/60 border-2 border-yellow-500 shadow-lg ring-2 ring-yellow-400 ring-offset-1';
+                  return 'bg-yellow-300/70 border-2 border-yellow-500 shadow-lg ring-2 ring-yellow-400 ring-offset-1';
                 case 'unit_price':
-                  return 'bg-green-300/60 border-2 border-green-500 shadow-lg ring-2 ring-green-400 ring-offset-1';
+                  return 'bg-green-300/70 border-2 border-green-500 shadow-lg ring-2 ring-green-400 ring-offset-1';
                 case 'line_total':
-                  return 'bg-blue-300/60 border-2 border-blue-500 shadow-lg ring-2 ring-blue-400 ring-offset-1';
+                  return 'bg-blue-300/70 border-2 border-blue-500 shadow-lg ring-2 ring-blue-400 ring-offset-1';
               }
             }
-            return 'bg-transparent border border-transparent hover:bg-indigo-100/40 hover:border-indigo-300';
+            return `${baseStyle} hover:opacity-80`;
           };
 
           return (

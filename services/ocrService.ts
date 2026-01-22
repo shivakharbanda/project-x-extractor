@@ -1,6 +1,6 @@
 import Tesseract from 'tesseract.js';
 import { pdfjs } from 'react-pdf';
-import { OcrWord, PageOcrData, LineItem, FieldHighlight, BoundingBox } from '../types';
+import { OcrWord, PageOcrData, LineItem, FieldHighlight, BoundingBox, ContactFieldHighlight, VendorInfo, ReceiverInfo } from '../types';
 
 // Scale used when rendering PDF pages for OCR (higher = better accuracy but slower)
 export const OCR_SCALE = 2;
@@ -372,6 +372,165 @@ export function findLineItemFields(
         boundingBox: totalBbox,
         fieldType: 'line_total'
       });
+    }
+  }
+
+  return highlights;
+}
+
+/**
+ * Normalize a contact field value for matching
+ * - Removes common formatting (dashes, parentheses, spaces for phones)
+ * - Lowercases for case-insensitive matching
+ */
+function normalizeContactValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\s\-().,]/g, '')
+    .trim();
+}
+
+/**
+ * Check if OCR text matches a contact field value
+ * Uses fuzzy matching for phone numbers and exact matching for others
+ */
+function matchesContactValue(ocrText: string, fieldValue: string): boolean {
+  const normalizedOcr = normalizeContactValue(ocrText);
+  const normalizedField = normalizeContactValue(fieldValue);
+
+  if (!normalizedOcr || !normalizedField || normalizedField.length < 3) return false;
+
+  // Exact match
+  if (normalizedOcr === normalizedField) return true;
+
+  // Check if OCR contains the field value (for multi-word matches)
+  if (normalizedOcr.includes(normalizedField) && normalizedField.length >= 5) return true;
+
+  // Check if field value contains OCR text (for partial matches)
+  if (normalizedField.includes(normalizedOcr) && normalizedOcr.length >= 5) return true;
+
+  return false;
+}
+
+/**
+ * Find the position of a contact field value in OCR data
+ * Searches all pages and returns the first match
+ */
+export function findContactFieldPosition(
+  fieldName: string,
+  fieldValue: string,
+  ocrData: PageOcrData[]
+): ContactFieldHighlight | null {
+  if (!fieldValue || fieldValue.trim() === '' || fieldValue === '-') {
+    return null;
+  }
+
+  // For multi-word values (like addresses), try to find consecutive words
+  const words = fieldValue.split(/\s+/).filter(w => w.length > 2);
+
+  for (const page of ocrData) {
+    // Try to match the full value or significant portion
+    for (let i = 0; i < page.words.length; i++) {
+      const word = page.words[i];
+
+      // Check if this word matches the start of the value
+      if (matchesContactValue(word.text, words[0] || fieldValue)) {
+        // For single-word values, return immediately
+        if (words.length <= 1 || fieldValue.length < 10) {
+          return {
+            fieldName,
+            pageIndex: page.pageIndex,
+            boundingBox: {
+              x: (word.bbox.x0 - 4) / OCR_SCALE,
+              y: (word.bbox.y0 - 2) / OCR_SCALE,
+              width: (word.bbox.x1 - word.bbox.x0 + 8) / OCR_SCALE,
+              height: (word.bbox.y1 - word.bbox.y0 + 4) / OCR_SCALE
+            }
+          };
+        }
+
+        // For multi-word values, try to find consecutive matches
+        const matchedWords: OcrWord[] = [word];
+        let nextIdx = i + 1;
+        let wordIdx = 1;
+
+        while (nextIdx < page.words.length && wordIdx < words.length) {
+          const nextWord = page.words[nextIdx];
+          // Check if words are on approximately the same line
+          const sameLineThreshold = page.height * 0.02;
+          if (Math.abs(nextWord.bbox.y0 - word.bbox.y0) < sameLineThreshold) {
+            if (matchesContactValue(nextWord.text, words[wordIdx])) {
+              matchedWords.push(nextWord);
+              wordIdx++;
+            }
+          }
+          nextIdx++;
+        }
+
+        // If we matched enough words, create the bounding box
+        if (matchedWords.length >= Math.min(2, words.length)) {
+          const minX = Math.min(...matchedWords.map(w => w.bbox.x0));
+          const maxX = Math.max(...matchedWords.map(w => w.bbox.x1));
+          const minY = Math.min(...matchedWords.map(w => w.bbox.y0));
+          const maxY = Math.max(...matchedWords.map(w => w.bbox.y1));
+
+          return {
+            fieldName,
+            pageIndex: page.pageIndex,
+            boundingBox: {
+              x: (minX - 4) / OCR_SCALE,
+              y: (minY - 2) / OCR_SCALE,
+              width: (maxX - minX + 8) / OCR_SCALE,
+              height: (maxY - minY + 4) / OCR_SCALE
+            }
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find positions for all contact/header fields in vendor and receiver info
+ * Returns a Map keyed by field name
+ */
+export function findAllFieldPositions(
+  vendorInfo: VendorInfo,
+  receiverInfo: ReceiverInfo,
+  ocrData: PageOcrData[]
+): Map<string, ContactFieldHighlight> {
+  const highlights = new Map<string, ContactFieldHighlight>();
+
+  // Vendor info fields
+  const vendorFields: Array<[string, string]> = [
+    ['vendor_name', vendorInfo.vendor_name],
+    ['quote_id', vendorInfo.quote_id],
+    ['quote_date', vendorInfo.quote_date],
+    ['terms', vendorInfo.terms],
+    ['supplier_address', vendorInfo.supplier_address],
+    ['supplier_phone', vendorInfo.supplier_phone],
+    ['supplier_email', vendorInfo.supplier_email],
+    ['supplier_fax', vendorInfo.supplier_fax],
+  ];
+
+  // Receiver info fields
+  const receiverFields: Array<[string, string]> = [
+    ['receiver_name', receiverInfo.receiver_name],
+    ['receiver_address', receiverInfo.receiver_address],
+    ['receiver_phone', receiverInfo.receiver_phone],
+    ['receiver_email', receiverInfo.receiver_email],
+    ['receiver_fax', receiverInfo.receiver_fax],
+  ];
+
+  // Find positions for all fields
+  for (const [fieldName, fieldValue] of [...vendorFields, ...receiverFields]) {
+    if (fieldValue && fieldValue.trim() !== '' && fieldValue !== '-') {
+      const position = findContactFieldPosition(fieldName, fieldValue, ocrData);
+      if (position) {
+        highlights.set(fieldName, position);
+      }
     }
   }
 

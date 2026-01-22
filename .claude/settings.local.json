@@ -8,7 +8,8 @@
       "WebFetch(domain:app.unpkg.com)",
       "Bash(npm install)",
       "Bash(grep:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(ls:*)"
     ]
   }
 }
