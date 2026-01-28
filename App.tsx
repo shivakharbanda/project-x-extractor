@@ -4,9 +4,11 @@ import { PDFViewer } from './components/PDFViewer';
 import { DataPanel } from './components/DataPanel';
 import { ChatInterface } from './components/ChatInterface';
 import ArchitectureDemo from './components/ArchitectureDemo';
-import { geminiService, fileToBase64 } from './services/geminiService';
+import { fileToBase64 } from './services/geminiService';
 import { ocrPdfPages, findContactFieldPosition, findAllFieldPositions } from './services/ocrService';
 import { ExtractedBidData, ChatMessage, ProcessingState, PageOcrData, ProcessingProgress, ContactFieldHighlight } from './types';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { v4 as uuidv4 } from 'uuid'; // A simple random ID generator would suffice but using uuid usually implies a lib, I'll use simple Date.now for demo
 
 type AppView = 'extractor' | 'architecture';
@@ -64,12 +66,29 @@ const App: React.FC = () => {
       let ocrComplete = false;
       let geminiComplete = false;
 
-      // Run Gemini extraction and OCR in parallel
+      // Run backend API extraction and OCR in parallel
       const [extractedData, ocrResults] = await Promise.all([
-        // Gemini extraction
+        // Backend API extraction
         (async () => {
           try {
-            const result = await geminiService.extractBidData(base64, selectedFile.type);
+            const response = await fetch(`${API_BASE_URL}/api/extract`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                file: { base64, mimeType: selectedFile.type }
+              })
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.error || `API error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+              throw new Error(result.error || 'Extraction failed');
+            }
+
             if (aborted) return null; // Don't update state if already errored
             geminiComplete = true;
             // If OCR already done, we're finished
@@ -82,7 +101,7 @@ const App: React.FC = () => {
                 message: `AI extraction complete. ${prev.message}`
               } : prev);
             }
-            return result;
+            return result.data;
           } catch (error) {
             aborted = true; // Set flag BEFORE re-throwing
             throw error;
@@ -227,21 +246,40 @@ const App: React.FC = () => {
     setIsChatTyping(true);
 
     try {
-      const response = await geminiService.chatWithBid(chatMessages, text, data);
-      
+      // Call backend chat API
+      const apiResponse = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          history: chatMessages.map(m => ({ role: m.role, text: m.text })),
+          bidData: data
+        })
+      });
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `API error: ${apiResponse.status}`);
+      }
+
+      const result = await apiResponse.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Chat failed');
+      }
+
       const newBotMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        text: response.text,
-        relatedLineItems: response.relatedLineItems,
+        text: result.response.text,
+        relatedLineItems: result.response.relatedLineItems,
         timestamp: new Date()
       };
-      
+
       setChatMessages(prev => [...prev, newBotMsg]);
 
       // If the bot mentions specific lines, highlight the first one
-      if (response.relatedLineItems && response.relatedLineItems.length > 0) {
-        handleLineClick(response.relatedLineItems[0]);
+      if (result.response.relatedLineItems && result.response.relatedLineItems.length > 0) {
+        handleLineClick(result.response.relatedLineItems[0]);
       }
 
     } catch (error) {

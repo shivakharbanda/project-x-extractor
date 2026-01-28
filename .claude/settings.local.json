@@ -9,7 +9,9 @@
       "Bash(npm install)",
       "Bash(grep:*)",
       "WebFetch(domain:github.com)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npm install @google/genai lucide-react pdfjs-dist react-pdf tesseract.js xlsx uuid)",
+      "Bash(npm install:*)"
     ]
   }
 }
