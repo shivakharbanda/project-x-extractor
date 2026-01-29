@@ -4,6 +4,7 @@ import { PDFViewer } from './components/PDFViewer';
 import { DataPanel } from './components/DataPanel';
 import { ChatInterface } from './components/ChatInterface';
 import ArchitectureDemo from './components/ArchitectureDemo';
+import LoginPage from './components/LoginPage';
 import { fileToBase64 } from './services/geminiService';
 import { ocrPdfPages, findContactFieldPosition, findAllFieldPositions } from './services/ocrService';
 import { ExtractedBidData, ChatMessage, ProcessingState, PageOcrData, ProcessingProgress, ContactFieldHighlight } from './types';
@@ -14,6 +15,8 @@ import { v4 as uuidv4 } from 'uuid'; // A simple random ID generator would suffi
 type AppView = 'extractor' | 'architecture';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [currentView, setCurrentView] = useState<AppView>('extractor');
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<ExtractedBidData | null>(null);
@@ -28,6 +31,15 @@ const App: React.FC = () => {
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatTyping, setIsChatTyping] = useState(false);
+
+  // Check auth status on mount
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/auth/status`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setIsAuthenticated(data.authenticated))
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setAuthChecking(false));
+  }, []);
 
   // Compute all field highlights when data and ocrData are loaded
   useEffect(() => {
@@ -74,6 +86,7 @@ const App: React.FC = () => {
             const response = await fetch(`${API_BASE_URL}/api/extract`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify({
                 file: { base64, mimeType: selectedFile.type }
               })
@@ -250,6 +263,7 @@ const App: React.FC = () => {
       const apiResponse = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           message: text,
           history: chatMessages.map(m => ({ role: m.role, text: m.text })),
@@ -295,6 +309,11 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await fetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    setIsAuthenticated(false);
+  };
+
   const handleChatHover = (lineNumbers: number[] | undefined) => {
      if (lineNumbers && lineNumbers.length > 0) {
          setHighlightedLineId(lineNumbers[0]);
@@ -302,6 +321,14 @@ const App: React.FC = () => {
          // Optionally clear highlight or keep last clicked
      }
   };
+
+  if (authChecking) {
+    return <div className="h-screen w-screen flex items-center justify-center bg-slate-100"><div className="text-slate-400">Loading...</div></div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden">
@@ -351,14 +378,22 @@ const App: React.FC = () => {
                     </button>
                 </div>
             </div>
-            {currentView === 'extractor' && data && (
+            <div className="flex items-center gap-2">
+                {currentView === 'extractor' && data && (
+                    <button
+                        onClick={() => { setFile(null); setData(null); setOcrData([]); setChatMessages([]); }}
+                        className="text-sm text-slate-500 hover:text-indigo-600 font-medium px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                        Upload New Bid
+                    </button>
+                )}
                 <button
-                    onClick={() => { setFile(null); setData(null); setOcrData([]); setChatMessages([]); }}
-                    className="text-sm text-slate-500 hover:text-indigo-600 font-medium px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors"
+                    onClick={handleLogout}
+                    className="text-sm text-slate-500 hover:text-red-600 font-medium px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors"
                 >
-                    Upload New Bid
+                    Logout
                 </button>
-            )}
+            </div>
         </nav>
 
         {/* Main Content Area */}

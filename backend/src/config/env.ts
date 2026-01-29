@@ -31,4 +31,11 @@ export const config = {
     model: process.env.OPENAI_MODEL || 'gpt-4o',
     isConfigured: () => !!process.env.OPENAI_API_KEY,
   },
+
+  // Auth
+  auth: {
+    authUsername: process.env.AUTH_USERNAME || 'admin',
+    authPassword: process.env.AUTH_PASSWORD || '',
+    sessionSecret: process.env.SESSION_SECRET || 'change-me-in-production-' + Math.random().toString(36),
+  },
 };
